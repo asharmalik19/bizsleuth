@@ -1,0 +1,15 @@
+[project]
+name = "business-owner-finder"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "beautifulsoup4>=4.13.4",
+    "curl-cffi>=0.12.0",
+    "dotenv>=0.9.9",
+    "html-text>=0.7.0",
+    "openai>=1.96.1",
+    "pandas>=2.3.1",
+    "tiktoken>=0.9.0",
+]
