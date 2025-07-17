@@ -68,19 +68,6 @@ def internal_page_to_search(all_pages_links):
     )
     return response.output_text.strip()
 
-def generate_analytics(response):
-    soup = BeautifulSoup(response.text, 'html.parser')
-    all_pages = get_all_internal_links(response.url, soup)
-
-    encoding = tiktoken.get_encoding("cl100k_base")
-    text = html_text.extract_text(response.text, guess_layout=False)
-    tokens = encoding.encode(text)
-    return {
-        'url': response.url,
-        'token_count': len(tokens),
-        'links': all_pages,
-    }
-
 def is_internal_link(base_url, link):
     """Checks if the link is an internal link of the base_url."""
     parsed_base = urlparse(base_url)
@@ -157,15 +144,6 @@ if __name__ == "__main__":
     df = pd.DataFrame(bo_names)
     df.to_csv('business_owners.csv', index=False)
     print(f"elapsed time: {datetime.now() - start_time}")
-
-        # if business_owner == 'None':
-        #    all_pages_links = get_all_internal_links(url, BeautifulSoup(response.text, 'html.parser'))
-        #    if all_pages_links:
-        #     internal_page = internal_page_to_search(all_pages_links)
-        #     print(f"Chosen internal page to search: {internal_page}")
-        
-
-
 
 
 
