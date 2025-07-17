@@ -22,13 +22,14 @@ load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI(api_key=api_key)
 
+# TODO: Use the appropriate api endpoint (maybe, parse or something)
 def find_business_owner(page_text):
     prompt = f"""
     Extract ONLY the business owner's name from this text.
 
     Rules:
     - Return ONLY the name, nothing else
-    - If no owner name is found, return exactly: ''
+    - If no owner name is found, return exactly: 'none'
     - Do not return employee names, CEO names unless explicitly stated as owner
 
     Text: {page_text}
@@ -44,7 +45,7 @@ def find_business_owner(page_text):
     return result
 
 def truncate_text(text):
-    MAX_TOKENS = 1000
+    MAX_TOKENS = 2000
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(text)
     print(f"Original token count: {len(tokens)}")
@@ -104,24 +105,49 @@ def get_all_internal_links(base_url, soup):
             links.add(full_url)
     return list(links)[:20]
 
+def get_about_link(all_page_links):
+    for link in all_page_links:
+        parsed_link = urlparse(link)
+        if 'about' in parsed_link.path.lower():
+            return link
+    return None
+
+def make_request(url):
+    try:
+        response = requests.get(url, impersonate='chrome')
+    except requests.RequestsError as e:
+        logging.error(f"Error fetching {url}: {e}")
+        return None
+    if response.status_code != 200:
+        logging.error(f"invalid response code {url}, status code: {response.status_code}")
+        return None
+    return response
+
+
 if __name__ == "__main__":
     start_time = datetime.now()
     urls_df = pd.read_csv('websites.csv').dropna(subset=['urls'])
     urls = urls_df['urls'].tolist()
-    # urls = ['https://thespaandstudioatmds.com/']
+    # urls = ['https://www.beautymarkbynina.com/']
     # websites_analytics = []
     bo_names = []
     for url in urls:
-        try:
-            response = requests.get(url, impersonate='chrome')
-        except requests.RequestsError as e:
-            logging.error(f"Error fetching {url}: {e}")
+        response = make_request(url)
+        if response is None:
             continue
-        if response.status_code != 200:
-            logging.error(f"invalid response code {url}, status code: {response.status_code}")
-            continue
-        page_text = html_text.extract_text(response.text, guess_layout=False)
-        text = truncate_text(page_text)
+        homepage_text = html_text.extract_text(response.text, guess_layout=False)
+        all_pages_links = get_all_internal_links(url, BeautifulSoup(response.text, 'html.parser'))
+        about_link = get_about_link(all_pages_links)
+
+        about_page_text = ''
+        if about_link:
+            about_page_response = make_request(about_link)
+            if about_page_response:
+                about_page_text = html_text.extract_text(about_page_response.text, guess_layout=False)
+            
+        combined_website_text = homepage_text + '\n' + about_page_text
+        text = truncate_text(combined_website_text)
+
         business_owner = find_business_owner(text)
         print(f"Business Owner for {url}: {business_owner}")
         bo_names.append({
