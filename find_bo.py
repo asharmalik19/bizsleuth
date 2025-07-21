@@ -45,7 +45,7 @@ def find_business_owner(page_text):
     return result
 
 def truncate_text(text):
-    MAX_TOKENS = 2000
+    MAX_TOKENS = 3000
     encoding = tiktoken.get_encoding("cl100k_base")
     tokens = encoding.encode(text)
     print(f"Original token count: {len(tokens)}")
@@ -92,12 +92,19 @@ def get_all_internal_links(base_url, soup):
             links.add(full_url)
     return list(links)[:20]
 
-def get_about_link(all_page_links):
+def get_relevant_links(all_page_links, pages_to_grab):
+    """In addition to the about page link, grabs 1 other link from a list of potential
+    pages from top to down priority"""
+    relevant_pages_links = set()
     for link in all_page_links:
         parsed_link = urlparse(link)
         if 'about' in parsed_link.path.lower():
-            return link
-    return None
+            relevant_pages_links.add(link)
+        for page in pages_to_grab:
+            if page in parsed_link.path.lower():
+                relevant_pages_links.add(link)
+                break
+    return list(relevant_pages_links)
 
 def make_request(url):
     try:
@@ -112,29 +119,33 @@ def make_request(url):
 
 
 if __name__ == "__main__":
+    PAGES_TO_GRAB = [
+        'owner', 'founder', 'director', 'ceo', 'team', 'staff', 'instructor', 
+        'trainer', 'coach', 'teacher', 'stylist', 'artist', 'therapist', 
+        'esthetician', 'specialist', 'practitioner', 'doctor'
+    ]
     start_time = datetime.now()
     urls_df = pd.read_csv('websites.csv').dropna(subset=['urls'])
     urls = urls_df['urls'].tolist()
-    # urls = ['https://www.beautymarkbynina.com/']
+    # urls = ['https://www.trinityconservatory.org/']
     # websites_analytics = []
     bo_names = []
     for url in urls:
         response = make_request(url)
         if response is None:
             continue
-        homepage_text = html_text.extract_text(response.text, guess_layout=False)
-        all_pages_links = get_all_internal_links(url, BeautifulSoup(response.text, 'html.parser'))
-        about_link = get_about_link(all_pages_links)
+        website_text = html_text.extract_text(response.text, guess_layout=False)
+        all_pages_links = get_all_internal_links(url, BeautifulSoup(response.text, 'html.parser'))     
+        relevant_links = get_relevant_links(all_pages_links, PAGES_TO_GRAB)
 
-        about_page_text = ''
-        if about_link:
-            about_page_response = make_request(about_link)
-            if about_page_response:
-                about_page_text = html_text.extract_text(about_page_response.text, guess_layout=False)
-            
-        combined_website_text = homepage_text + '\n' + about_page_text
-        text = truncate_text(combined_website_text)
+        for link in relevant_links:
+            relevant_page_response = make_request(link)
+            if relevant_page_response is None:
+                continue
+            page_text = html_text.extract_text(relevant_page_response.text, guess_layout=False)
+            website_text = website_text + '\n' + page_text      
 
+        text = truncate_text(website_text)
         business_owner = find_business_owner(text)
         print(f"Business Owner for {url}: {business_owner}")
         bo_names.append({
