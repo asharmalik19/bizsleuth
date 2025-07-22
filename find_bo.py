@@ -28,9 +28,12 @@ def find_business_owner(page_text):
     Extract ONLY the business owner's name from this text.
 
     Rules:
+    - Look for titles like: owner, founder, director, creative director, president, principal, proprietor
+    - Also consider someone who founded the business or is described as starting/establishing it
     - Return ONLY the name, nothing else
+    - If multiple potential owners, return the most senior/primary one
     - If no owner name is found, return exactly: 'none'
-    - Do not return employee names, CEO names unless explicitly stated as owner
+    - Do not return regular employees, instructors, or staff unless they have ownership/leadership titles
 
     Text: {page_text}
     """
@@ -122,12 +125,13 @@ if __name__ == "__main__":
     PAGES_TO_GRAB = [
         'owner', 'founder', 'director', 'ceo', 'team', 'staff', 'instructor', 
         'trainer', 'coach', 'teacher', 'stylist', 'artist', 'therapist', 
-        'esthetician', 'specialist', 'practitioner', 'doctor'
+        'esthetician', 'specialist', 'practitioner', 'doctor', 'members',
+        'crew', 'meet', 'bio', 'story'
     ]
     start_time = datetime.now()
     urls_df = pd.read_csv('websites.csv').dropna(subset=['urls'])
     urls = urls_df['urls'].tolist()
-    # urls = ['https://www.trinityconservatory.org/']
+    # urls = ['http://www.covingtonregionalballet.com/']
     # websites_analytics = []
     bo_names = []
     for url in urls:
