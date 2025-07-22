@@ -111,7 +111,11 @@ def get_relevant_links(all_page_links, pages_to_grab):
 
 def make_request(url):
     try:
-        response = requests.get(url, impersonate='chrome')
+        response = requests.get(
+            url, 
+            impersonate='chrome',
+            timeout=30 
+        )
     except requests.RequestsError as e:
         logging.error(f"Error fetching {url}: {e}")
         return None
