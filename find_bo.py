@@ -93,7 +93,7 @@ def get_all_internal_links(base_url, soup):
             continue
         if is_internal_link(base_url, full_url):
             links.add(full_url)
-    return list(links)[:20]
+    return list(links)
 
 def get_relevant_links(all_page_links, pages_to_grab):
     """In addition to the about page link, grabs 1 other link from a list of potential
