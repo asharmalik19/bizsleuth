@@ -12,7 +12,7 @@ import html_text
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
-logging.basicConfig(level=logging.INFO, 
+logging.basicConfig(level=logging.ERROR, 
     filename='find_bo.log', 
     filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'
