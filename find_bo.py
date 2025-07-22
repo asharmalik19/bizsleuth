@@ -57,20 +57,6 @@ def truncate_text(text):
         text = encoding.decode(tokens)
     return text
 
-def internal_page_to_search(all_pages_links):
-    prompt = f"""
-    You are an expert in finding business owners' names from website content. Given a list of internal links from a website, choose one link that is most likely to contain the business owner's name.
-    
-    Internal Links: {', '.join(all_pages_links)}
-    
-    Output Format: the chosen internal link unmodified
-    """
-    response = client.responses.create(
-        model='gpt-4o-mini',
-        input=prompt,
-    )
-    return response.output_text.strip()
-
 def is_internal_link(base_url, link):
     """Checks if the link is an internal link of the base_url."""
     parsed_base = urlparse(base_url)
