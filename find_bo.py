@@ -2,6 +2,7 @@ import os
 import logging
 import re
 from datetime import datetime
+from pydantic import BaseModel
 
 import pandas as pd
 from dotenv import load_dotenv
@@ -22,30 +23,39 @@ load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI(api_key=api_key)
 
+class template(BaseModel):
+    business_owner: str
+    address: str
+    summary: str
+
 # TODO: Use the appropriate api endpoint (maybe, parse or something)
-def find_business_owner(page_text):
+def find_business_info(page_text):
     prompt = f"""
-    Extract ONLY the business owner's name from this text.
+    Extract ONLY the following information from the text below:
+
+    1. The business owner's name.
+    2. The full business address.
+    3. A brief summary of the business (no more than two sentences).
 
     Rules:
-    - Look for titles like: owner, founder, director, creative director, president, principal, proprietor
-    - Also consider someone who founded the business or is described as starting/establishing it
-    - Return ONLY the name, nothing else
-    - If multiple potential owners, return the most senior/primary one
-    - If no owner name is found, return exactly: 'none'
-    - Do not return regular employees, instructors, or staff unless they have ownership/leadership titles
+    - For the owner, look for titles like: owner, founder, director, creative director, president, principal, proprietor.
+    - Also consider someone who founded or established the business.
+    - Return ONLY the name for the owner. If multiple, return the most senior/primary one. If none found, return exactly: 'none'.
+    - For the address, return the full address as it appears in the text. If not found, return exactly: 'none'.
+    - For the summary, provide a concise overview of what the business does or offers based on the text. If not enough information, return exactly: 'none'.
+    - Do not return any extra text, explanations, or unrelated information.
+    - Format your answer as JSON with keys: "owner", "address", "summary".
 
     Text: {page_text}
     """
-    response = client.responses.create(
+    response = client.responses.parse(
         model='gpt-4o-mini',
         input=prompt,
-        temperature=0.0
+        temperature=0.0,
+        text_format=template
     )
-    result = response.output_text.strip()
-    if result.lower() in ['', 'none', 'no owner', 'no name', 'not found', 'n/a', 'not mentioned']:
-        return None
-    return result
+    info = response.output_parsed
+    return info
 
 def truncate_text(text):
     MAX_TOKENS = 3000
@@ -120,10 +130,8 @@ if __name__ == "__main__":
     ]
     start_time = datetime.now()
     urls_df = pd.read_csv('websites.csv').dropna(subset=['urls'])
-    urls = urls_df['urls'].tolist()
-    # urls = ['http://www.covingtonregionalballet.com/']
-    # websites_analytics = []
-    bo_names = []
+    urls = urls_df['urls'].tolist()[:10]
+    business_info_list = []
     for url in urls:
         response = make_request(url)
         if response is None:
@@ -140,14 +148,16 @@ if __name__ == "__main__":
             website_text = website_text + '\n' + page_text      
 
         text = truncate_text(website_text)
-        business_owner = find_business_owner(text)
-        print(f"Business Owner for {url}: {business_owner}")
-        bo_names.append({
+        business_info = find_business_info(text)
+        print(f'info for {url}: {business_info}')
+        business_info_list.append({
             'url': url,
-            'business_owner': business_owner
+            'business_owner': business_info.business_owner,
+            'address': business_info.address,
+            'summary': business_info.summary
         })     
-    df = pd.DataFrame(bo_names)
-    df.to_csv('business_owners.csv', index=False)
+    df = pd.DataFrame(business_info_list)
+    df.to_csv('business_info.csv', index=False)
     print(f"elapsed time: {datetime.now() - start_time}")
 
 
