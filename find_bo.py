@@ -27,6 +27,7 @@ class template(BaseModel):
     business_owner: str
     address: str
     summary: str
+    business_size: str
 
 # TODO: Use the appropriate api endpoint (maybe, parse or something)
 def find_business_info(page_text):
@@ -36,6 +37,7 @@ def find_business_info(page_text):
     1. The business owner's name.
     2. The full business address.
     3. A brief summary of the business (no more than two sentences).
+    4. The business size ("small", "medium", or "large").
 
     Rules:
     - For the owner, look for titles like: owner, founder, director, creative director, president, principal, proprietor.
@@ -43,8 +45,13 @@ def find_business_info(page_text):
     - Return ONLY the name for the owner. If multiple, return the most senior/primary one. If none found, return exactly: 'none'.
     - For the address, return the full address as it appears in the text. If not found, return exactly: 'none'.
     - For the summary, provide a concise overview of what the business does or offers based on the text. If not enough information, return exactly: 'none'.
+    - For the business size, categorize as:
+        * "small" if the text explicitly says "small" or implies fewer than ~50 employees,
+        * "medium" if it says "medium" or implies ~50–250 employees,
+        * "large" if it says "large" or implies more than ~250 employees,
+        * otherwise return exactly: 'none'.
     - Do not return any extra text, explanations, or unrelated information.
-    - Format your answer as JSON with keys: "owner", "address", "summary".
+    - Format your answer as JSON with keys: "owner", "address", "summary", "business_size".
 
     Text: {page_text}
     """
@@ -154,7 +161,8 @@ if __name__ == "__main__":
             'url': url,
             'business_owner': business_info.business_owner,
             'address': business_info.address,
-            'summary': business_info.summary
+            'summary': business_info.summary,
+            'business_size': business_info.business_size
         })     
     df = pd.DataFrame(business_info_list)
     df.to_csv('business_info.csv', index=False)
