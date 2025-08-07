@@ -36,7 +36,7 @@ def find_business_info(page_text):
 
     1. The business owner's name.
     2. The full business address.
-    3. A brief summary of the business (no more than two sentences).
+    3. A brief summary of the business (no more than 1 sentence).
     4. The business size ("small", "medium", or "large").
 
     Rules:
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     ]
     start_time = datetime.now()
     urls_df = pd.read_csv('websites.csv').dropna(subset=['urls'])
-    urls = urls_df['urls'].tolist()[:10]
+    urls = urls_df['urls'].tolist()
     business_info_list = []
     for url in urls:
         response = make_request(url)
