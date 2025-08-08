@@ -14,7 +14,7 @@ from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 
 logging.basicConfig(level=logging.ERROR, 
-    filename='find_bo.log', 
+    filename='bizsleuth.log', 
     filemode='w',
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
