@@ -28,6 +28,7 @@ class template(BaseModel):
     address: str
     summary: str
     business_size: str
+    email: str
 
 # TODO: Use the appropriate api endpoint (maybe, parse or something)
 def find_business_info(page_text):
@@ -38,6 +39,7 @@ def find_business_info(page_text):
     2. The full business address.
     3. A brief summary of the business (no more than 1 sentence).
     4. The business size ("small", "medium", or "large").
+    5. A contact email address.
 
     Rules:
     - For the owner, look for titles like: owner, founder, director, creative director, president, principal, proprietor.
@@ -50,8 +52,9 @@ def find_business_info(page_text):
         * "medium" if it says "medium" or implies ~50–250 employees,
         * "large" if it says "large" or implies more than ~250 employees,
         * otherwise return exactly: 'none'.
+    - For the email, prioritize the business owner's email if available. Otherwise, return any general contact email for the business. If no email is found, return exactly: 'none'.
     - Do not return any extra text, explanations, or unrelated information.
-    - Format your answer as JSON with keys: "owner", "address", "summary", "business_size".
+    - Format your answer as JSON with keys: "owner", "address", "summary", "business_size", "email".
 
     Text: {page_text}
     """
@@ -162,15 +165,9 @@ if __name__ == "__main__":
             'business_owner': business_info.business_owner,
             'address': business_info.address,
             'summary': business_info.summary,
-            'business_size': business_info.business_size
+            'business_size': business_info.business_size,
+            'email': business_info.email
         })     
     df = pd.DataFrame(business_info_list)
     df.to_csv('business_info.csv', index=False)
     print(f"elapsed time: {datetime.now() - start_time}")
-
-
-
-
-
-
-
