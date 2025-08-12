@@ -29,6 +29,8 @@ class template(BaseModel):
     summary: str
     business_size: str
     email: str
+    business_number: str
+    number_of_locations: int
 
 def find_business_info(page_text):
     prompt = f"""
@@ -39,6 +41,8 @@ def find_business_info(page_text):
     3. A brief summary of the business (no more than 1 sentence).
     4. The business size ("small", "medium", or "large").
     5. A contact email address.
+    6. The business phone number.
+    7. The number of business locations.
 
     Rules:
     - For the owner, look for titles like: owner, founder, director, creative director, president, principal, proprietor.
@@ -52,8 +56,9 @@ def find_business_info(page_text):
         * "large" if it says "large" or implies more than ~250 employees,
         * otherwise return exactly: 'none'.
     - For the email, prioritize the business owner's email if available. Otherwise, return any general contact email for the business. If no email is found, return exactly: 'none'.
+    - For the phone number, return the primary contact number. If none found, return exactly: 'none'.
+    - For the number of locations, count how many distinct physical locations or addresses are mentioned. If it is unclear or no addresses are found, return exactly: 'none'.
     - Do not return any extra text, explanations, or unrelated information.
-    - Format your answer as JSON with keys: "owner", "address", "summary", "business_size", "email".
 
     Text: {page_text}
     """
@@ -165,7 +170,9 @@ if __name__ == "__main__":
             'address': business_info.address,
             'summary': business_info.summary,
             'business_size': business_info.business_size,
-            'email': business_info.email
+            'email': business_info.email,
+            'business_number': business_info.business_number,
+            'number_of_locations': business_info.number_of_locations
         })     
     df = pd.DataFrame(business_info_list)
     df.to_csv('business_info.csv', index=False)
