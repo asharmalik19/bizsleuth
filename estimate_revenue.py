@@ -1,13 +1,20 @@
-import openai
-from dotenv import load_dotenv
 import os
+
+from dotenv import load_dotenv
+from openai import OpenAI
+from pydantic import BaseModel
+from typing import Optional, List
 
 load_dotenv()
 api_key = os.getenv('OPENAI_API_KEY')
 client = OpenAI(api_key=api_key)
 
+class Revenue(BaseModel):
+    monthly_revenue_usd: Optional[int] = None
+    monthly_revenue_usd_range: Optional[List[int]] = None
+
 def get_monthly_revenue(website):
-    prompt = """Role: You are a precise web researcher + revenue estimator. Use only online evidence. Do not invent facts.
+    prompt = f"""Role: You are a precise web researcher + revenue estimator. Use only online evidence. Do not invent facts.
 
 Input:
 {website}
@@ -45,11 +52,11 @@ Exclude non-attributable national digital products unless clearly part of the sa
 Output format (MUST be valid JSON and NOTHING else):
 
 If a single best estimate:
-    {"monthly_revenue_usd": 0}
+    {{"monthly_revenue_usd": 0}}
 If a defensible range:
-    {"monthly_revenue_usd_range": [0, 0]}
+    {{"monthly_revenue_usd_range": [0, 0]}}
 If not enough data:
-    {"monthly_revenue_usd": null}
+    {{"monthly_revenue_usd": null}}
 
 Quality bar: Use at least one primary/official source when possible. Prefer conservative assumptions over speculative leaps.
 """
@@ -58,11 +65,14 @@ Quality bar: Use at least one primary/official source when possible. Prefer cons
         model='gpt-4.1',
         input=prompt,
         temperature=0.0,
+        text_format=Revenue,
         tools=[{"type": "web_search_preview"}]
     )
+    return response.output_parsed
+
 
 if __name__=='__main__':
     website = 'https://www.yogavida.com/'
     est_revenue = get_monthly_revenue(website)
-    print(est_revenue)
+    print(est_revenue.model_dump_json(indent=2))
     
