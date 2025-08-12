@@ -30,7 +30,6 @@ class template(BaseModel):
     business_size: str
     email: str
 
-# TODO: Use the appropriate api endpoint (maybe, parse or something)
 def find_business_info(page_text):
     prompt = f"""
     Extract ONLY the following information from the text below:
