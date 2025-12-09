@@ -1,79 +1,106 @@
+import asyncio
 import os
 import logging
-import re
 from datetime import datetime
 from pydantic import BaseModel
+import json
 
 import pandas as pd
 from dotenv import load_dotenv
-from curl_cffi import requests
-from openai import OpenAI
+from openai import AsyncOpenAI
 import tiktoken
 import html_text
-from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from crawl4ai import AsyncWebCrawler, BFSDeepCrawlStrategy
+from crawl4ai.async_configs import BrowserConfig, CrawlerRunConfig
 
-logging.basicConfig(level=logging.ERROR, 
-    filename='bizsleuth.log', 
-    filemode='w',
-    format='%(asctime)s - %(levelname)s - %(message)s'
+# TODO: crawl more than 1 level deep
+# TODO: make the code llm-agnostic
+# TODO: implement proper batching or async processing for large-scale URLs
+# TODO: use AI batch API
+
+logging.basicConfig(
+    level=logging.INFO,
+    filename="bizsleuth_test.log",
+    filemode="w",
+    format="%(asctime)s - %(levelname)s - %(message)s",
 )
 
 load_dotenv()
-api_key = os.getenv('OPENAI_API_KEY')
-client = OpenAI(api_key=api_key)
+api_key = os.getenv("OPENAI_API_KEY")
+client = AsyncOpenAI(api_key=api_key)
 
-class template(BaseModel):
-    business_owner: str
-    address: str
-    summary: str
-    business_size: str
-    email: str
-    business_number: str
+with open("long_prompt.txt", "r", encoding="utf-8") as file:
+    PROMPT_TEMPLATE = file.read()
+
+
+class BusinessData(BaseModel):
+    estimated_revenue: int
     number_of_locations: int
+    business_type: str
+    contact_name: str
+    contact_email: str
+    number_of_members: int
+    current_software: str
+    services_offered: str
+    ai_summary: str
+    confidence_score: int
+    street: str
+    city: str
+    state: str
+    postal_code: str
+    country: str
+    company_name: str
+    phone_number: str
 
-def find_business_info(page_text):
+
+class Email(BaseModel):
+    subject_line: str
+    greeting: str
+    intro_body: str
+    bullet_transition_sentence: str
+    benefit_bullets: list[str]
+    cta: str
+    signature: str
+
+
+class Emails(BaseModel):
+    email_1: Email
+    email_2: Email
+
+
+class Template(BaseModel):
+    business_id: str
+    business_data: BusinessData
+    emails: Emails
+
+
+async def find_business_info(website_text, external_links_str, business_id) -> Template:
     prompt = f"""
-    Extract ONLY the following information from the text below:
-
-    1. The business owner's name.
-    2. The full business address.
-    3. A brief summary of the business (no more than 1 sentence).
-    4. The business size ("small", "medium", or "large").
-    5. A contact email address.
-    6. The business phone number.
-    7. The number of business locations.
-
-    Rules:
-    - For the owner, look for titles like: owner, founder, director, creative director, president, principal, proprietor.
-    - Also consider someone who founded or established the business.
-    - Return ONLY the name for the owner. If multiple, return the most senior/primary one. If none found, return exactly: 'none'.
-    - For the address, return the full address as it appears in the text. If not found, return exactly: 'none'.
-    - For the summary, provide a concise overview of what the business does or offers based on the text. If not enough information, return exactly: 'none'.
-    - For the business size, categorize as:
-        * "small" if the text explicitly says "small" or implies fewer than ~50 employees,
-        * "medium" if it says "medium" or implies ~50–250 employees,
-        * "large" if it says "large" or implies more than ~250 employees,
-        * otherwise return exactly: 'none'.
-    - For the email, prioritize the business owner's email if available. Otherwise, return any general contact email for the business. If no email is found, return exactly: 'none'.
-    - For the phone number, return the primary contact number. If none found, return exactly: 'none'.
-    - For the number of locations, count how many distinct physical locations or addresses are mentioned. If it is unclear or no addresses are found, return exactly: 'none'.
-    - Do not return any extra text, explanations, or unrelated information.
-
-    Text: {page_text}
+    {PROMPT_TEMPLATE}
+    Exteral links found on the website: {external_links_str}
+    Website Text: {website_text}
     """
-    response = client.responses.parse(
-        model='gpt-4o-mini',
+    response = await client.responses.parse(
+        model="gpt-5-mini",
         input=prompt,
-        temperature=0.0,
-        text_format=template
+        text_format=Template,
+        tools=[
+            {
+                "type": "file_search",
+                "vector_store_ids": ["vs_68c3379096548191839b3bdfa12b77a8"],
+            }
+        ],
     )
     info = response.output_parsed
+    info.business_id = business_id
     return info
 
+
 def truncate_text(text):
-    MAX_TOKENS = 3000
-    encoding = tiktoken.get_encoding("cl100k_base")
+    MAX_TOKENS = 50000
+    encoding = tiktoken.get_encoding(
+        "cl100k_base"
+    )  # TODO: tiktoken.get_encoding(MODEL)
     tokens = encoding.encode(text)
     print(f"Original token count: {len(tokens)}")
     if len(tokens) > MAX_TOKENS:
@@ -81,99 +108,86 @@ def truncate_text(text):
         text = encoding.decode(tokens)
     return text
 
-def is_internal_link(base_url, link):
-    """Checks if the link is an internal link of the base_url."""
-    parsed_base = urlparse(base_url)
-    parsed_link = urlparse(link)
-    # An internal link either has the same domain or is a relative link
-    return (parsed_link.netloc == '' or parsed_link.netloc == parsed_base.netloc)
 
-def get_all_internal_links(base_url, soup):
-    """Finds all internal links within the website homepage, excluding 'tel:' and 'mailto:' links."""
-    links = set()
-    for a_tag in soup.find_all('a', href=True):
-        link = a_tag['href']
-        # Exclude 'tel:' and 'mailto:' links
-        if link.startswith(('tel:', 'mailto:', 'javascript:')) or re.search(r'\.(png|jpg|jpeg|pdf)$', link):
-            continue 
-        try:
-            full_url = urljoin(base_url, link)
-        except ValueError:  # I got an invalid internal URL even after the above filtering
-            logging.error(f"Error joining URL {base_url} and link {link}")
-            continue
-        if is_internal_link(base_url, full_url):
-            links.add(full_url)
-    return list(links)
-
-def get_relevant_links(all_page_links, pages_to_grab):
-    """In addition to the about page link, grabs 1 other link from a list of potential
-    pages from top to down priority"""
-    relevant_pages_links = set()
-    for link in all_page_links:
-        parsed_link = urlparse(link)
-        if 'about' in parsed_link.path.lower():
-            relevant_pages_links.add(link)
-        for page in pages_to_grab:
-            if page in parsed_link.path.lower():
-                relevant_pages_links.add(link)
-                break
-    return list(relevant_pages_links)
-
-def make_request(url):
-    try:
-        response = requests.get(
-            url, 
-            impersonate='chrome',
-            timeout=30 
+async def crawl_websites(urls_with_business_ids):
+    browser_config = BrowserConfig(browser_type="chromium", headless=True) 
+    run_config = CrawlerRunConfig(
+        wait_until="networkidle",
+        deep_crawl_strategy=BFSDeepCrawlStrategy(
+            max_depth=1,
+            max_pages=50,
+            include_external=False
         )
-    except requests.RequestsError as e:
-        logging.error(f"Error fetching {url}: {e}")
-        return None
-    if response.status_code != 200:
-        logging.error(f"invalid response code {url}, status code: {response.status_code}")
-        return None
-    return response
+    )
+    async with AsyncWebCrawler(config=browser_config) as crawler:
+        crawled_results = []
+        for _, row in urls_with_business_ids.iterrows():
+            business_id = row['business_id']
+            url = row['url']
+            total_website_text = ""
+            total_external_links = set()
+            results = await crawler.arun(
+                url=url,
+                config=run_config
+            )
+            if not results:
+                continue
+            for result in results:
+                if not result.success:
+                    continue
+                text = html_text.extract_text(result.html, guess_layout=False)
+                total_website_text += text + "\n"
+                external_links = result.links["external"]
+                external_links_hrefs = [link["href"] for link in external_links]
+                total_external_links.update(external_links_hrefs)
+            total_website_text = truncate_text(total_website_text)
+            total_external_links_str = ", ".join(total_external_links)
+            crawled_results.append({
+                "total_website_text": total_website_text,
+                "total_external_links_str": total_external_links_str,
+                "business_id": business_id,
+            })
+    return crawled_results
+
+
+async def main(urls_with_business_ids):
+    crawled_results = await crawl_websites(urls_with_business_ids)
+    print("Finished crawling websites! Now running ai tasks...")
+    ai_tasks = [
+        find_business_info(
+            result["total_website_text"],
+            result["total_external_links_str"],
+            result["business_id"],
+        )
+        for result in crawled_results
+    ]
+    ai_results = await asyncio.gather(*ai_tasks, return_exceptions=True)
+    valid_ai_results = []
+    for result in ai_results:
+        if isinstance(result, Exception):
+            logging.warning(f"AI task failed: {result}")
+            continue
+        valid_ai_results.append(result)
+    business_info_list = [
+        business_info.model_dump() for business_info in valid_ai_results
+    ]
+    return business_info_list
 
 
 if __name__ == "__main__":
-    PAGES_TO_GRAB = [
-        'owner', 'founder', 'director', 'ceo', 'team', 'staff', 'instructor', 
-        'trainer', 'coach', 'teacher', 'stylist', 'artist', 'therapist', 
-        'esthetician', 'specialist', 'practitioner', 'doctor', 'members',
-        'crew', 'meet', 'bio', 'story'
-    ]
     start_time = datetime.now()
-    urls_df = pd.read_csv('websites.csv').dropna(subset=['urls'])
-    urls = urls_df['urls'].tolist()
-    business_info_list = []
-    for url in urls:
-        response = make_request(url)
-        if response is None:
-            continue
-        website_text = html_text.extract_text(response.text, guess_layout=False)
-        all_pages_links = get_all_internal_links(url, BeautifulSoup(response.text, 'html.parser'))     
-        relevant_links = get_relevant_links(all_pages_links, PAGES_TO_GRAB)
+    BATCH_SIZE = 100
+    business_info_total = []
+    urls_with_business_ids = pd.read_csv("websites.csv").dropna(
+        subset=["url"]
+    )
+    for batch in range(0, len(urls_with_business_ids), BATCH_SIZE):
+        print(f"processing batch {batch} to {batch + BATCH_SIZE}")
+        batched_df = urls_with_business_ids.iloc[batch : batch + BATCH_SIZE]
+        batched_business_info = asyncio.run(main(batched_df))
+        business_info_total.extend(batched_business_info)
+        print(batched_business_info)
+    with open("business_info.json", "w", encoding="utf-8") as f:
+        json.dump(business_info_total, f, ensure_ascii=False, indent=2)
 
-        for link in relevant_links:
-            relevant_page_response = make_request(link)
-            if relevant_page_response is None:
-                continue
-            page_text = html_text.extract_text(relevant_page_response.text, guess_layout=False)
-            website_text = website_text + '\n' + page_text      
-
-        text = truncate_text(website_text)
-        business_info = find_business_info(text)
-        print(f'info for {url}: {business_info}')
-        business_info_list.append({
-            'url': url,
-            'business_owner': business_info.business_owner,
-            'address': business_info.address,
-            'summary': business_info.summary,
-            'business_size': business_info.business_size,
-            'email': business_info.email,
-            'business_number': business_info.business_number,
-            'number_of_locations': business_info.number_of_locations
-        })     
-    df = pd.DataFrame(business_info_list)
-    df.to_csv('business_info.csv', index=False)
-    print(f"elapsed time: {datetime.now() - start_time}")
+    logging.info(f"Total elapsed time: {datetime.now() - start_time}")
