@@ -3,7 +3,6 @@ import os
 import logging
 from datetime import datetime
 from pydantic import BaseModel
-import json
 
 import pandas as pd
 from dotenv import load_dotenv
