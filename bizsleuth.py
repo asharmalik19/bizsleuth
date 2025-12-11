@@ -60,7 +60,7 @@ async def find_business_info(website_text, url) -> BusinessData:
 
 
 def truncate_text(text):
-    MAX_TOKENS = 20000
+    MAX_TOKENS = 10000
     encoding = tiktoken.get_encoding(
         "cl100k_base"
     )  # TODO: tiktoken.get_encoding(MODEL)
@@ -73,12 +73,16 @@ def truncate_text(text):
 
 
 async def crawl_websites(urls_list):
-    browser_config = BrowserConfig(browser_type="chromium", headless=True) 
+    browser_config = BrowserConfig(
+        browser_type="chromium", 
+        headless=False, 
+        enable_stealth=True
+        ) 
     run_config = CrawlerRunConfig(
-        wait_until="networkidle",
+        wait_until="domcontentloaded",
         deep_crawl_strategy=BFSDeepCrawlStrategy(
             max_depth=1,
-            max_pages=50,
+            max_pages=10,
             include_external=False
         )
     )
@@ -90,8 +94,6 @@ async def crawl_websites(urls_list):
                 url=url,
                 config=run_config
             )
-            if not results:
-                continue
             for result in results:
                 if not result.success:
                     continue
@@ -107,7 +109,7 @@ async def crawl_websites(urls_list):
 
 async def main(urls_list):
     crawled_results = await crawl_websites(urls_list)
-    print("Finished crawling websites! Now running ai tasks...")
+    logging.info("Finished crawling websites! Now running ai tasks...")
     ai_tasks = [
         find_business_info(
             result["website_text"],
@@ -130,19 +132,8 @@ async def main(urls_list):
 
 if __name__ == "__main__":
     start_time = datetime.now()
-    BATCH_SIZE = 100
-    business_info_total = []
-    urls_df = pd.read_csv("websites.csv").dropna(
-        subset=["url"]
-    )
-    urls = urls_df['url'].tolist()
-    for batch in range(0, len(urls), BATCH_SIZE):
-        print(f"processing batch {batch} to {batch + BATCH_SIZE}")
-        batched_urls = urls[batch : batch + BATCH_SIZE]
-        batched_business_info = asyncio.run(main(batched_urls))
-        business_info_total.extend(batched_business_info)
-        print(batched_business_info)
-    output_df = pd.DataFrame(business_info_total)
-    output_df.to_csv("business_info.csv", index=False, encoding="utf-8")
-
+    urls_list = pd.read_csv("websites.csv")["url"].tolist()[:5]
+    businesses_info_list = asyncio.run(main(urls_list))
+    df = pd.DataFrame(businesses_info_list)
+    df.to_csv("businesses_info.csv", index=False)
     logging.info(f"Total elapsed time: {datetime.now() - start_time}")
