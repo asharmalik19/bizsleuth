@@ -24,3 +24,4 @@ Extract ONLY the following information from the text below:
     - For the phone number, return the primary contact number. If none found, return exactly: 'none'.
     - For the number of locations, count how many distinct physical locations or addresses are mentioned. If it is unclear or no addresses are found, return exactly: 'none'.
     - Do not return any extra text, explanations, or unrelated information.
+    - Do not invent or assume information that is not explicitly stated in the provided text.
