@@ -78,17 +78,18 @@ async def crawl_websites(urls_list):
         headless=False, 
         enable_stealth=True
         ) 
-    run_config = CrawlerRunConfig(
-        wait_until="domcontentloaded",
-        deep_crawl_strategy=BFSDeepCrawlStrategy(
-            max_depth=1,
-            max_pages=10,
-            include_external=False
-        )
-    )
+    
     async with AsyncWebCrawler(config=browser_config) as crawler:
         crawled_results = []
         for url in urls_list:
+            run_config = CrawlerRunConfig(
+            wait_until="domcontentloaded",
+            deep_crawl_strategy=BFSDeepCrawlStrategy(
+                max_depth=1,
+                max_pages=10,
+                include_external=False
+            )
+        )
             total_website_text = ""
             results = await crawler.arun(
                 url=url,
